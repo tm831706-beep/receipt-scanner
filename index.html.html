@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>在庫スキャナー</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0f0f11; --surface: #1a1a1f; --surface2: #222228;
+  --border: rgba(255,255,255,0.08); --border2: rgba(255,255,255,0.14);
+  --text: #f0f0f2; --text2: #888892; --text3: #55555f;
+  --accent: #7fffb0; --accent-dim: rgba(127,255,176,0.12); --accent-border: rgba(127,255,176,0.35);
+  --accent2: #67d4ff; --accent2-dim: rgba(103,212,255,0.12); --accent2-border: rgba(103,212,255,0.35);
+  --warn: #ffd166; --warn-dim: rgba(255,209,102,0.12);
+  --danger: #ff6b6b; --danger-dim: rgba(255,107,107,0.1);
+  --radius: 12px; --radius-sm: 8px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Noto Sans JP', sans-serif; font-size: 14px; overscroll-behavior: none; }
+#app { display: flex; flex-direction: column; height: 100vh; max-width: 480px; margin: 0 auto; }
+#main { flex: 1; overflow-y: auto; padding: 12px 16px 80px; }
+#nav { display: flex; background: var(--surface); border-top: 0.5px solid var(--border); padding: 6px 0 env(safe-area-inset-bottom, 6px); position: sticky; bottom: 0; z-index: 100; }
+.nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 4px; cursor: pointer; color: var(--text3); font-size: 11px; border: none; background: none; transition: color 0.15s; }
+.nav-btn .icon { font-size: 22px; line-height: 1; }
+.nav-btn.active { color: var(--accent); }
+.pane { display: none; } .pane.active { display: block; }
+#api-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 80vh; padding: 24px; text-align: center; }
+#api-screen h1 { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+#api-screen p { color: var(--text2); font-size: 13px; line-height: 1.7; margin-bottom: 24px; }
+.api-input-wrap input { width: 100%; padding: 13px 16px; background: var(--surface2); border: 0.5px solid var(--border2); border-radius: var(--radius); color: var(--text); font-family: 'DM Mono', monospace; font-size: 13px; outline: none; margin-bottom: 12px; }
+.hint { font-size: 11px; color: var(--text3); line-height: 1.6; }
+.hint a { color: var(--accent); text-decoration: none; }
+.btn { padding: 12px 20px; border-radius: var(--radius-sm); border: 0.5px solid var(--border2); background: var(--surface2); color: var(--text); font-family: 'Noto Sans JP', sans-serif; font-size: 14px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.15s; width: 100%; }
+.btn:active { transform: scale(0.97); }
+.btn-accent { background: var(--accent); border-color: var(--accent); color: #0a1a10; font-weight: 700; }
+.btn-accent2 { background: var(--accent2); border-color: var(--accent2); color: #021a22; font-weight: 700; }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.btn-sm { padding: 7px 12px; font-size: 12px; width: auto; }
+.btn-ghost { background: transparent; border-color: transparent; color: var(--text2); }
+.step-wrap { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+.step { display: flex; align-items: center; gap: 5px; }
+.step-num { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; background: var(--surface2); color: var(--text3); }
+.step-num.s-green { background: var(--accent); color: #0a1a10; }
+.step-num.s-blue { background: var(--accent2); color: #021a22; }
+.step-num.s-done { background: var(--surface2); color: var(--text3); }
+.step-label { font-size: 12px; color: var(--text3); }
+.step-label.s-green { color: var(--accent); font-weight: 700; }
+.step-label.s-blue { color: var(--accent2); font-weight: 700; }
+.step-arrow { color: var(--text3); font-size: 11px; }
+.mode-toggle { display: flex; gap: 8px; margin-bottom: 12px; }
+.mode-btn { flex: 1; padding: 10px; border-radius: var(--radius-sm); border: 0.5px solid var(--border2); background: var(--surface2); color: var(--text2); font-size: 13px; font-weight: 500; cursor: pointer; text-align: center; transition: all 0.15s; }
+.mode-btn.m-green { background: var(--accent-dim); border-color: var(--accent-border); color: var(--accent); }
+.mode-btn.m-blue { background: var(--accent2-dim); border-color: var(--accent2-border); color: var(--accent2); }
+#jan-bar { background: var(--accent-dim); border: 0.5px solid var(--accent-border); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 10px; display: none; align-items: center; gap: 10px; }
+#jan-bar.show { display: flex; animation: su 0.2s ease; }
+.jan-label { font-size: 11px; color: var(--text2); }
+.jan-val { font-family: 'DM Mono', monospace; font-size: 16px; font-weight: 500; color: var(--accent); }
+#cam-container { position: relative; width: 100%; background: #000; border-radius: var(--radius); overflow: hidden; margin-bottom: 12px; }
+#cam-container.bm { aspect-ratio: 16/9; }
+#cam-container.rm { aspect-ratio: 3/4; }
+#cam-video { width: 100%; height: 100%; object-fit: cover; display: block; }
+#cam-ph { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--text3); }
+#cam-ph .bi { font-size: 48px; opacity: 0.4; }
+#cam-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+#bg { position: absolute; inset: 0; pointer-events: none; display: none; }
+#bg .sl { position: absolute; left: 10%; right: 10%; top: 50%; height: 2px; background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: scan 2s ease-in-out infinite; }
+#bg .c { position: absolute; width: 16px; height: 16px; border-color: var(--accent); border-style: solid; }
+#bg .c.tl { top: 20%; left: 10%; border-width: 2px 0 0 2px; } #bg .c.tr { top: 20%; right: 10%; border-width: 2px 2px 0 0; }
+#bg .c.bl { bottom: 20%; left: 10%; border-width: 0 0 2px 2px; } #bg .c.br { bottom: 20%; right: 10%; border-width: 0 2px 2px 0; }
+@keyframes scan { 0%,100%{top:25%} 50%{top:75%} }
+#rg { position: absolute; inset: 16px; border: 1.5px solid rgba(103,212,255,0.4); border-radius: var(--radius); pointer-events: none; display: none; }
+#rg::before { content:''; position:absolute; top:-1px; left:-1px; width:20px; height:20px; border-top:2px solid var(--accent2); border-left:2px solid var(--accent2); border-radius:3px 0 0 0; }
+#rg::after { content:''; position:absolute; bottom:-1px; right:-1px; width:20px; height:20px; border-bottom:2px solid var(--accent2); border-right:2px solid var(--accent2); border-radius:0 0 3px 0; }
+#csb { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); font-size: 11px; font-weight: 500; padding: 4px 14px; border-radius: 20px; white-space: nowrap; display: none; }
+#csb.g { color: var(--accent); border: 0.5px solid var(--accent-border); }
+#csb.b { color: var(--accent2); border: 0.5px solid var(--accent2-border); }
+#so { position: absolute; inset: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; flex-direction: column; gap: 14px; border-radius: var(--radius); }
+#so.show { display: flex; }
+.sp { width: 40px; height: 40px; border: 2.5px solid rgba(127,255,176,0.2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
+@keyframes spin { to{transform:rotate(360deg)} }
+#so span { color: var(--accent); font-size: 13px; font-weight: 500; }
+#cc { position: absolute; bottom: 0; left: 0; right: 0; padding: 14px; display: none; justify-content: center; align-items: center; gap: 20px; }
+#cc.show { display: flex; }
+#shutter { width: 64px; height: 64px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.3); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 24px; transition: transform 0.1s; }
+#shutter.g { background: var(--accent); box-shadow: 0 0 0 4px rgba(127,255,176,0.2); }
+#shutter.b { background: var(--accent2); box-shadow: 0 0 0 4px rgba(103,212,255,0.2); }
+#shutter:active { transform: scale(0.9); }
+#flipb { width: 42px; height: 42px; border-radius: 50%; background: rgba(0,0,0,0.5); border: 0.5px solid rgba(255,255,255,0.2); color: #fff; font-size: 18px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.csa { display: flex; flex-direction: column; gap: 8px; }
+.or-d { display: flex; align-items: center; gap: 10px; color: var(--text3); font-size: 11px; }
+.or-d::before,.or-d::after { content:''; flex:1; height:0.5px; background:var(--border); }
+.pw { height: 2px; background: var(--surface2); border-radius: 2px; margin-bottom: 8px; overflow: hidden; display: none; }
+.pw.show { display: block; }
+.pb { height: 2px; background: var(--accent); border-radius: 2px; transition: width 0.3s; }
+#status { font-size: 12px; color: var(--text2); min-height: 18px; margin-bottom: 8px; }
+#rd { background: var(--surface); border: 0.5px solid var(--border2); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; display: none; }
+#rd.show { display: block; animation: su 0.2s ease; }
+@keyframes su { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+.dh { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.dt { font-size: 13px; font-weight: 700; }
+.badge { display: inline-flex; align-items: center; font-size: 11px; font-weight: 500; padding: 3px 9px; border-radius: 20px; }
+.bok { background: var(--accent-dim); color: var(--accent); border: 0.5px solid var(--accent-border); }
+.bwarn { background: var(--warn-dim); color: var(--warn); border: 0.5px solid rgba(255,209,102,0.3); }
+.bng { background: var(--danger-dim); color: var(--danger); border: 0.5px solid rgba(255,107,107,0.25); }
+#tp { width: 100%; height: 90px; object-fit: contain; border-radius: var(--radius-sm); background: var(--surface2); margin-bottom: 12px; display: none; }
+.field { margin-bottom: 9px; }
+.field label { display: block; font-size: 11px; color: var(--text2); margin-bottom: 3px; font-weight: 500; }
+.field input,.field select { width: 100%; padding: 9px 12px; background: var(--surface2); border: 0.5px solid var(--border2); border-radius: var(--radius-sm); color: var(--text); font-family: 'Noto Sans JP', sans-serif; font-size: 14px; outline: none; -webkit-appearance: none; }
+.field input:focus,.field select:focus { border-color: var(--accent-border); }
+.da { display: grid; grid-template-columns: 1fr 2fr; gap: 8px; margin-top: 12px; }
+.sh { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.st { font-size: 15px; font-weight: 700; }
+.cc { background: var(--accent-dim); color: var(--accent); border: 0.5px solid var(--accent-border); border-radius: 20px; padding: 2px 10px; font-size: 12px; font-weight: 700; }
+.ic { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius-sm); padding: 11px 14px; margin-bottom: 8px; display: flex; align-items: flex-start; gap: 10px; }
+.in { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text3); min-width: 18px; padding-top: 2px; }
+.ib { flex: 1; min-width: 0; }
+.inm { font-size: 14px; font-weight: 500; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.im { display: flex; flex-wrap: wrap; gap: 5px; font-size: 11px; color: var(--text2); font-family: 'DM Mono', monospace; }
+.id { color: var(--text3); font-size: 18px; cursor: pointer; padding: 0 2px; }
+.id:active { color: var(--danger); }
+.es { text-align: center; padding: 48px 24px; color: var(--text3); }
+.es .ei { font-size: 40px; margin-bottom: 12px; opacity: 0.4; }
+.ec { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
+.ec h3 { font-size: 11px; font-weight: 700; color: var(--text2); margin-bottom: 10px; letter-spacing: 0.05em; text-transform: uppercase; }
+.xok { color: var(--accent); font-size: 12px; margin-top: 6px; }
+.xerr { color: var(--danger); font-size: 12px; margin-top: 6px; }
+.wcols { font-size: 11px; color: var(--text3); margin-top: 6px; font-family: 'DM Mono', monospace; line-height: 1.7; }
+#topbar { padding: 14px 16px 8px; display: flex; align-items: center; justify-content: space-between; }
+#topbar h1 { font-size: 17px; font-weight: 700; }
+#topbar .sub { font-size: 11px; color: var(--text3); }
+input[type=file] { display: none; }
+::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div id="app">
+<div id="api-screen">
+  <div style="font-size:52px;margin-bottom:20px">🔑</div>
+  <h1>APIキーを設定</h1>
+  <p>Google Gemini APIキーを入力してください。<br><code style="font-family:'DM Mono',monospace;font-size:12px;color:var(--accent)">AIzaSy...</code> で始まるキーです。</p>
+  <div class="api-input-wrap"><input type="password" id="aki" placeholder="AIzaSy..." autocomplete="off" spellcheck="false"></div>
+  <button class="btn btn-accent" onclick="saveKey()" style="margin-bottom:16px">保存して開始</button>
+  <p class="hint">キーはこのデバイスにのみ保存されます。<br><a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com</a> で無料取得できます。</p>
+</div>
+
+<div id="mapp" style="display:none;flex-direction:column;height:100%">
+<div id="topbar"><div><h1>在庫スキャナー</h1><div class="sub">バーコード→レシート→登録</div></div><button class="btn btn-ghost btn-sm" onclick="resetKey()" style="width:auto;font-size:11px">キー変更</button></div>
+<div id="main">
+
+<div id="pane-scan" class="pane active">
+  <div class="step-wrap">
+    <div class="step"><div class="step-num s-green" id="s1n">1</div><div class="step-label s-green" id="s1l">バーコード</div></div>
+    <div class="step-arrow">→</div>
+    <div class="step"><div class="step-num" id="s2n">2</div><div class="step-label" id="s2l">レシート</div></div>
+    <div class="step-arrow">→</div>
+    <div class="step"><div class="step-num" id="s3n">3</div><div class="step-label" id="s3l">登録</div></div>
+  </div>
+  <div class="mode-toggle">
+    <div class="mode-btn m-green" id="mb1" onclick="setMode('b')">📦 バーコード</div>
+    <div class="mode-btn" id="mb2" onclick="setMode('r')">🧾 レシート</div>
+  </div>
+  <div id="jan-bar"><div><div class="jan-label">JANコード 読み取り済み</div><div class="jan-val" id="jv"></div></div><button class="btn btn-sm" onclick="clearJan()" style="width:auto;font-size:11px;color:var(--text3)">×クリア</button></div>
+  <div id="cam-container" class="bm">
+    <video id="cam-video" autoplay playsinline muted style="display:none"></video>
+    <div id="cam-ph"><div class="bi">📦</div><div style="font-size:13px">カメラを起動してください</div></div>
+    <div id="bg"><div class="sl"></div><div class="c tl"></div><div class="c tr"></div><div class="c bl"></div><div class="c br"></div></div>
+    <div id="rg"></div>
+    <div id="cam-flash"></div>
+    <div id="csb" class="g"></div>
+    <div id="so"><div class="sp"></div><span id="sot">解析中...</span></div>
+    <div id="cc"><div id="flipb" onclick="flipCam()">🔄</div><div id="shutter" class="g" onclick="shoot()">📸</div><div style="width:42px"></div></div>
+  </div>
+  <div class="csa">
+    <button class="btn btn-accent" id="startb" onclick="startCam()">📷 カメラ起動</button>
+    <button class="btn" id="stopb" onclick="stopCam()" style="display:none">■ 停止</button>
+    <div class="or-d">または</div>
+    <button class="btn" onclick="document.getElementById('fi').click()">📁 画像から選択</button>
+    <input type="file" id="fi" accept="image/*" multiple onchange="handleFiles(this.files)">
+  </div>
+  <div class="pw" id="pw"><div class="pb" id="pb" style="width:0%"></div></div>
+  <div id="status"></div>
+  <div id="rd">
+    <div class="dh"><span class="dt">確認・編集して登録</span><span id="cb" class="badge bok"></span></div>
+    <img id="tp">
+    <div class="field"><label>商品名 ★</label><input id="fn" type="text" placeholder="商品名"></div>
+    <div class="field"><label>JANコード</label><input id="fj" type="text" inputmode="numeric" style="font-family:'DM Mono',monospace" placeholder="バーコードスキャンまたは手動入力"></div>
+    <div class="field"><label>仕入日 ★</label><input id="fd" type="date"></div>
+    <div class="field"><label>購入金額（円）</label><input id="fp" type="number" inputmode="numeric"></div>
+    <div class="field"><label>仕入先・店舗名</label><input id="fs" type="text"></div>
+    <div class="field"><label>購入元カテゴリ</label>
+      <select id="fc"><option value="">選択してください</option><option>店舗他</option><option>amazon</option><option>楽天</option><option>ヤフショ</option><option>aupay</option><option>スニダン</option><option>その他</option></select>
+    </div>
+    <div class="field"><label>ステータス</label><select id="fst"><option value="受領">受領</option><option value="販売中">販売中</option><option value="販売済">販売済</option></select></div>
+    <div class="da"><button class="btn" onclick="discard()">破棄</button><button class="btn btn-accent" onclick="confirmAdd()">✓ 追加して次へ</button></div>
+  </div>
+</div>
+
+<div id="pane-list" class="pane">
+  <div class="sh"><span class="st">登録リスト <span id="cchip" class="cc" style="display:none">0</span></span><button class="btn btn-ghost btn-sm" onclick="clearAll()" style="color:var(--danger);width:auto">全削除</button></div>
+  <div id="ilist"></div>
+  <div id="lemp" class="es"><div class="ei">📋</div><p>スキャンタブで商品を追加すると<br>ここに表示されます</p></div>
+</div>
+
+<div id="pane-export" class="pane">
+  <div class="ec">
+    <h3>書き込み内容</h3>
+    <div id="wp" style="font-size:13px;color:var(--text2)">リストが空です</div>
+  </div>
+  <button class="btn btn-accent" id="wbtn" disabled onclick="writeGS()" style="margin-bottom:8px">📊 スプレッドシートに書き込む</button>
+  <div id="wst" style="font-size:12px;color:var(--text2);min-height:18px"></div>
+</div>
+
+</div>
+<div id="nav">
+  <button class="nav-btn active" onclick="sw('scan')" id="nav-scan"><span class="icon">📷</span>スキャン</button>
+  <button class="nav-btn" onclick="sw('list')" id="nav-list"><span class="icon">📋</span>リスト</button>
+  <button class="nav-btn" onclick="sw('export')" id="nav-export"><span class="icon">📥</span>Excel出力</button>
+</div>
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+let rows=[],stream=null,face='environment',xlData=null,xlName='',apiKey='';
+let mode='b',jan='',lastJan='',cooldown=false,bdInt=null;
+
+window.addEventListener('DOMContentLoaded',()=>{
+  const k=localStorage.getItem('zaiko_key');
+  if(k){apiKey=k;showApp();}
+  document.getElementById('fd').value=new Date().toISOString().slice(0,10);
+});
+
+function saveKey(){
+  const v=document.getElementById('aki').value.trim();
+  if(v.length<10){alert('APIキーを入力してください');return;}
+  apiKey=v;localStorage.setItem('zaiko_key',v);showApp();
+}
+function showApp(){
+  document.getElementById('api-screen').style.display='none';
+  const a=document.getElementById('mapp');a.style.display='flex';a.style.flexDirection='column';a.style.height='100%';
+}
+function resetKey(){
+  if(!confirm('APIキーをリセットしますか？'))return;
+  localStorage.removeItem('zaiko_key');apiKey='';stopCam();
+  document.getElementById('api-screen').style.display='flex';
+  document.getElementById('mapp').style.display='none';
+}
+
+function sw(n){
+  ['scan','list','export'].forEach(t=>{
+    document.getElementById('pane-'+t).classList.toggle('active',t===n);
+    document.getElementById('nav-'+t).classList.toggle('active',t===n);
+  });
+  if(n==='export')updWP();
+}
+
+function setMode(m){
+  mode=m;
+  const isB=m==='b';
+  document.getElementById('mb1').className='mode-btn'+(isB?' m-green':'');
+  document.getElementById('mb2').className='mode-btn'+(!isB?' m-blue':'');
+  const c=document.getElementById('cam-container');
+  c.className=isB?'bm':'rm';
+  document.getElementById('bg').style.display=(isB&&stream)?'block':'none';
+  document.getElementById('rg').style.display=(!isB&&stream)?'block':'none';
+  const sh=document.getElementById('shutter');
+  sh.className=isB?'g':'b';
+  updSteps();
+  document.getElementById('cam-ph').querySelector('.bi').textContent=isB?'📦':'🧾';
+  if(stream) cstat(isB?'📦 バーコードに向けてシャッター':'🧾 レシート全体を収めてシャッター',isB?'g':'b');
+  if(isB&&stream) startBD(); else stopBD();
+}
+
+function updSteps(){
+  const hasJ=jan!=='';
+  if(mode==='b'){
+    setS(1,'s-green','s-green'); setS(2,'',''); setS(3,'','');
+  } else {
+    setS(1,'s-done',''); setS(2,'s-blue','s-blue'); setS(3,'','');
+  }
+}
+function setS(n,nc,lc){
+  document.getElementById('s'+n+'n').className='step-num '+nc;
+  document.getElementById('s'+n+'l').className='step-label '+lc;
+}
+
+async function startCam(){
+  try{
+    if(stream)stream.getTracks().forEach(t=>t.stop());
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:face},width:{ideal:4096},height:{ideal:3072}},audio:false});
+    const v=document.getElementById('cam-video');
+    v.srcObject=stream;v.style.display='block';
+    document.getElementById('cam-ph').style.display='none';
+    document.getElementById('cc').classList.add('show');
+    document.getElementById('startb').style.display='none';
+    document.getElementById('stopb').style.display='';
+    if(mode==='b'){document.getElementById('bg').style.display='block';cstat('📦 バーコードに向けてシャッター','g');startBD();}
+    else{document.getElementById('rg').style.display='block';cstat('🧾 レシート全体を収めてシャッター','b');}
+  }catch(e){setSt('⚠ カメラを起動できません。「画像から選択」をお使いください。');}
+}
+
+function stopCam(){
+  stopBD();
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+  const v=document.getElementById('cam-video');
+  v.srcObject=null;v.style.display='none';
+  document.getElementById('cam-ph').style.display='flex';
+  document.getElementById('bg').style.display='none';
+  document.getElementById('rg').style.display='none';
+  document.getElementById('cc').classList.remove('show');
+  document.getElementById('startb').style.display='';
+  document.getElementById('stopb').style.display='none';
+}
+
+async function flipCam(){face=face==='environment'?'user':'environment';await startCam();}
+
+function cstat(msg,cls='g'){
+  const el=document.getElementById('csb');
+  el.textContent=msg;el.className=cls;el.style.display='block';
+  clearTimeout(el._t);el._t=setTimeout(()=>el.style.display='none',2500);
+}
+
+function flash(){
+  const f=document.getElementById('cam-flash');
+  f.style.transition='none';f.style.opacity='0.9';
+  requestAnimationFrame(()=>{f.style.transition='opacity 0.4s';f.style.opacity='0';});
+}
+
+// Barcode detection
+async function startBD(){
+  stopBD();
+  if(!('BarcodeDetector' in window))return;
+  try{
+    const bd=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39']});
+    bdInt=setInterval(async()=>{
+      if(cooldown||!stream)return;
+      const v=document.getElementById('cam-video');
+      if(!v.videoWidth)return;
+      try{
+        const bc=await bd.detect(v);
+        if(bc.length>0){
+          const val=bc[0].rawValue;
+          if(val!==lastJan){lastJan=val;cooldown=true;onJan(val);setTimeout(()=>{cooldown=false;},2000);}
+        }
+      }catch(e){}
+    },200);
+  }catch(e){}
+}
+function stopBD(){if(bdInt){clearInterval(bdInt);bdInt=null;}lastJan='';}
+
+function onJan(val){
+  jan=val;
+  document.getElementById('jv').textContent=val;
+  document.getElementById('jan-bar').classList.add('show');
+  document.getElementById('fj').value=val;
+  cstat('✓ JAN: '+val,'g');
+  setTimeout(()=>{setMode('r');cstat('🧾 次にレシートを撮影してください','b');},800);
+}
+function clearJan(){
+  jan='';lastJan='';
+  document.getElementById('jan-bar').classList.remove('show');
+  document.getElementById('fj').value='';
+  setMode('b');
+}
+
+async function shoot(){
+  const v=document.getElementById('cam-video');
+  if(!v.srcObject)return;
+  flash();
+  const c=document.createElement('canvas');
+  c.width=v.videoWidth;c.height=v.videoHeight;
+  c.getContext('2d').drawImage(v,0,0);
+  const du=c.toDataURL('image/jpeg',0.97);
+  const b64=du.split(',')[1];
+
+  if(mode==='b'){
+    if('BarcodeDetector' in window){
+      try{
+        const bd=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39']});
+        const bc=await bd.detect(c);
+        if(bc.length>0){onJan(bc[0].rawValue);return;}
+      }catch(e){}
+    }
+    document.getElementById('cc').classList.remove('show');
+    document.getElementById('sot').textContent='バーコード読み取り中...';
+    document.getElementById('so').classList.add('show');
+    const j=await geminiJan(b64);
+    document.getElementById('so').classList.remove('show');
+    document.getElementById('cc').classList.add('show');
+    if(j){onJan(j);}else{cstat('⚠ 読み取れませんでした。再撮影してください。','g');}
+  } else {
+    document.getElementById('cc').classList.remove('show');
+    document.getElementById('sot').textContent='レシート解析中...';
+    document.getElementById('so').classList.add('show');
+    const r=await geminiReceipt(b64);
+    document.getElementById('so').classList.remove('show');
+    if(r){if(jan)r.jan=jan;showResult(r,du);}
+    else{document.getElementById('cc').classList.add('show');cstat('⚠ 読み取れませんでした。再撮影してください。','b');}
+  }
+}
+
+async function gemini(b64,mt,prompt){
+  const resp=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:mt,data:b64}},{text:prompt}]}],generationConfig:{temperature:0.1,maxOutputTokens:400}})
+  });
+  const d=await resp.json();
+  if(d.error){console.error(d.error);return null;}
+  return d.candidates?.[0]?.content?.parts?.[0]?.text||'';
+}
+
+async function geminiJan(b64){
+  try{
+    const txt=await gemini(b64,'image/jpeg','この画像のバーコード（JANコード/EAN）を読み取り、数字のみを返してください。バーコードがなければ「none」と返してください。説明不要。');
+    if(!txt||txt.includes('none'))return null;
+    const m=txt.match(/\d{8,14}/);
+    return m?m[0]:null;
+  }catch(e){return null;}
+}
+
+async function geminiReceipt(b64){
+  const today=new Date().toISOString().slice(0,10);
+  try{
+    const txt=await gemini(b64,'image/jpeg',`このレシート画像から情報を抽出してください。JSONのみ返答（説明・マークダウン不要）：
+{"product_name":"商品名（最初の1件、不明なら店名+商品）","purchase_date":"YYYY-MM-DD（なければ${today}）","price":税込合計金額の数値かnull,"supplier":"店舗名","category":"店舗他/amazon/楽天/ヤフショ/aupay/スニダン/その他 から選択"}`);
+    const clean=txt.replace(/```json|```/g,'').trim();
+    return JSON.parse(clean);
+  }catch(e){return null;}
+}
+
+async function handleFiles(files){
+  files=Array.from(files);
+  if(!files.length)return;
+  if(files.length===1){
+    const b64=await toB64(files[0]);
+    const mt=files[0].type||'image/jpeg';
+    const thumb='data:'+mt+';base64,'+b64;
+    setSt('解析中...');
+    if(mode==='b'){
+      const j=await geminiJan(b64);setSt('');
+      if(j){onJan(j);}else{setSt('バーコードが読み取れませんでした。手動でJANコードを入力してください。');setMode('r');showResult({},thumb);}
+    }else{
+      const r=await geminiReceipt(b64);setSt('');
+      if(r){if(jan)r.jan=jan;showResult(r,thumb);}else{showResult({},thumb);}
+    }
+  }else{
+    const pw=document.getElementById('pw'),pb=document.getElementById('pb');
+    pw.classList.add('show');
+    for(let i=0;i<files.length;i++){
+      setSt(`処理中 ${i+1}/${files.length}`);
+      pb.style.width=Math.round(i/files.length*100)+'%';
+      const b64=await toB64(files[i]);
+      const r=await geminiReceipt(b64);
+      if(r&&(r.product_name||r.purchase_date))addRow(r);
+    }
+    pb.style.width='100%';setSt(`✓ ${files.length}枚処理しました`);
+    setTimeout(()=>pw.classList.remove('show'),1500);
+  }
+}
+
+function toB64(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(f);});}
+
+function showResult(r,thumb){
+  document.getElementById('fn').value=r.product_name||'';
+  document.getElementById('fj').value=r.jan||jan||'';
+  document.getElementById('fd').value=r.purchase_date||new Date().toISOString().slice(0,10);
+  document.getElementById('fp').value=r.price!=null?r.price:'';
+  document.getElementById('fs').value=r.supplier||'';
+  const cat=document.getElementById('fc');
+  cat.value=[...cat.options].map(o=>o.value).includes(r.category)?r.category:'';
+  document.getElementById('fst').value='受領';
+  const filled=[r.product_name,r.purchase_date,r.price,r.supplier].filter(Boolean).length;
+  const b=document.getElementById('cb');
+  if(filled>=3){b.textContent='✓ 読み取り良好';b.className='badge bok';}
+  else if(filled>=1){b.textContent='△ 一部未取得';b.className='badge bwarn';}
+  else{b.textContent='✕ 手動入力を';b.className='badge bng';}
+  if(thumb){const img=document.getElementById('tp');img.src=thumb;img.style.display='block';}
+  setS(3,'s-blue','s-blue');
+  document.getElementById('rd').classList.add('show');
+  document.getElementById('cc').classList.remove('show');
+}
+
+function discard(){
+  document.getElementById('rd').classList.remove('show');
+  document.getElementById('tp').style.display='none';
+  if(stream)document.getElementById('cc').classList.add('show');
+  setMode('b');
+}
+
+function confirmAdd(){
+  const name=document.getElementById('fn').value.trim();
+  if(!name){alert('商品名を入力してください');return;}
+  addRow({
+    product_name:name,jan:document.getElementById('fj').value.trim(),
+    purchase_date:document.getElementById('fd').value,
+    price:document.getElementById('fp').value?Number(document.getElementById('fp').value):null,
+    supplier:document.getElementById('fs').value.trim(),
+    category:document.getElementById('fc').value,
+    status:document.getElementById('fst').value,
+  });
+  document.getElementById('rd').classList.remove('show');
+  document.getElementById('tp').style.display='none';
+  jan='';lastJan='';
+  document.getElementById('jan-bar').classList.remove('show');
+  document.getElementById('fj').value='';
+  if(stream)document.getElementById('cc').classList.add('show');
+  setMode('b');
+  setSt('✓ 追加しました。次の商品を撮影してください。');
+  setTimeout(()=>setSt(''),2500);
+}
+
+function setSt(m){document.getElementById('status').textContent=m;}
+
+function addRow(r){rows.push(r);renderList();updBadge();}
+function renderList(){
+  const el=document.getElementById('ilist'),emp=document.getElementById('lemp');
+  if(!rows.length){el.innerHTML='';emp.style.display='block';return;}
+  emp.style.display='none';
+  el.innerHTML=rows.map((r,i)=>`<div class="ic">
+    <span class="in">${i+1}</span>
+    <div class="ib">
+      <div class="inm">${esc(r.product_name)}</div>
+      <div class="im">
+        ${r.jan?'<span>JAN:'+esc(r.jan)+'</span>':'<span style="color:var(--text3)">JAN:なし</span>'}
+        ${r.purchase_date?'<span>'+r.purchase_date+'</span>':''}
+        ${r.price!=null?'<span>¥'+r.price.toLocaleString()+'</span>':''}
+        ${r.supplier?'<span>'+esc(r.supplier)+'</span>':''}
+      </div>
+    </div>
+    <span class="id" onclick="delRow(${i})">×</span>
+  </div>`).join('');
+}
+function delRow(i){rows.splice(i,1);renderList();updBadge();}
+function clearAll(){if(rows.length&&!confirm('全削除しますか？'))return;rows=[];renderList();updBadge();}
+function updBadge(){const c=document.getElementById('cchip');c.textContent=rows.length;c.style.display=rows.length?'':'none';updWP();}
+function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbyYQNCeuJSYYO17AWon6AeX7pV8to1Trtg6moKqeCcf57g8fhrGZ9yyDkp3W12w2dVK/exec';
+
+function loadXL(input){}
+
+function updWP(){
+  const el=document.getElementById('wp'),btn=document.getElementById('wbtn');
+  if(!rows.length){el.innerHTML='リストが空です';btn.disabled=true;return;}
+  el.innerHTML=`<strong style="color:var(--text)">${rows.length}件</strong>をGoogleスプレッドシートの「管理表」シートに直接書き込みます<div class="wcols">ステータス / 年 / 月 / 購入元 / 仕入日 / 仕入先 / 商品名 / 購入金額 / JAN</div>`;
+  btn.disabled=false;
+}
+
+async function writeGS(){
+  if(!rows.length)return;
+  const btn=document.getElementById('wbtn');
+  const st=document.getElementById('wst');
+  btn.disabled=true;
+  let ok=0,ng=0;
+  for(let i=0;i<rows.length;i++){
+    st.textContent=`書き込み中... ${i+1}/${rows.length}`;
+    try{
+      const form=new FormData();
+      form.append('data',JSON.stringify(rows[i]));
+      await fetch(GAS_URL,{method:'POST',mode:'no-cors',body:form});
+      ok++;
+    }catch(e){ng++;}
+  }
+  st.textContent=`✓ ${ok}件をスプレッドシートに送信しました${ng?'（'+ng+'件失敗）':''}`;
+  btn.disabled=false;
+}
+</script>
+</body>
+</html>
